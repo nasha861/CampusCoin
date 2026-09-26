@@ -11,7 +11,7 @@ const notificationSchema = new mongoose.Schema(
     title: { type: String, required: true },
     message: { type: String, required: true },
     severity: { type: String, enum: ['info', 'medium', 'high'], default: 'info' },
-    meta: { type: Object }, // e.g. { budgetId, categoryId, percentage }
+    meta: { type: Object },
     isRead: { type: Boolean, default: false },
     isDismissed: { type: Boolean, default: false },
   },
