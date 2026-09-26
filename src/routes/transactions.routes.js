@@ -2,6 +2,7 @@ const router = require('express').Router();
 const Transaction = require('../models/Transaction');
 const Category = require('../models/Category');
 const { protect } = require('../middleware/auth');
+const { checkBudgetAfterTransaction } = require('../services/budgetAlert.service');
 
 router.use(protect);
 
@@ -90,17 +91,27 @@ router.post('/', async (req, res) => {
     if (!cat) return res.status(400).json({ message: 'Invalid category' });
 
     const tx = await Transaction.create({
-      userId: req.user._id,
-      categoryId,
-      type,
-      amount: Number(amount),
-      description,
-      merchant,
-      occurredAt: new Date(occurredAt),
-      source: 'manual',
-    });
+  userId: req.user._id,
+  categoryId,
+  type,
+  amount: Number(amount),
+  description,
+  merchant,
+  occurredAt: new Date(occurredAt),
+  source: 'manual',
+});
+
+if (tx.type === 'expense') {
+  await checkBudgetAfterTransaction(
+    req.user._id,
+    tx.categoryId,
+    tx.occurredAt
+  );
+}
 
     res.status(201).json({ data: formatTx(tx) });
+
+   
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });

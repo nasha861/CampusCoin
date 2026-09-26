@@ -8,9 +8,9 @@ router.use(protect);
 function formatBudget(b, spentAmount = 0) {
   return {
     id: b._id.toString(),
-    userId: b.userId.toString(),
-    categoryId: b.categoryId.toString(),
-    month: b.month,
+    userId: b.user.toString(),
+    categoryId: b.category.toString(),
+    month: b.month.toISOString().slice(0, 7),
     limitAmount: b.limitAmount,
     spentAmount,
     createdAt: b.createdAt,
@@ -37,12 +37,17 @@ async function getSpentAmounts(userId, month, categoryIds) {
 router.get('/', async (req, res) => {
   try {
     const month = req.query.month || new Date().toISOString().slice(0, 7);
-    const budgets = await Budget.find({ userId: req.user._id, month });
+   const budgetMonth = new Date(`${month}-01T00:00:00.000Z`);
 
-    const categoryIds = budgets.map((b) => b.categoryId);
+    const budgets = await Budget.find({
+  user: req.user._id,
+  month: budgetMonth,
+    });
+
+    const categoryIds = budgets.map((b) => b.category);
     const spentMap = await getSpentAmounts(req.user._id, month, categoryIds);
 
-    const formatted = budgets.map((b) => formatBudget(b, spentMap[b.categoryId.toString()] || 0));
+    const formatted = budgets.map( (b) => formatBudget(b, spentMap[b.category.toString()] || 0));
     const totalBudgeted = formatted.reduce((s, b) => s + b.limitAmount, 0);
     const totalSpent = formatted.reduce((s, b) => s + b.spentAmount, 0);
 
@@ -69,9 +74,28 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'categoryId, month and limitAmount are required' });
     }
 
-    const budget = await Budget.create({ userId: req.user._id, categoryId, month, limitAmount: Number(limitAmount) });
-    const spentMap = await getSpentAmounts(req.user._id, month, [budget.categoryId]);
-    res.status(201).json({ data: formatBudget(budget, spentMap[budget.categoryId.toString()] || 0) });
+    
+    const budgetMonth = new Date(`${month}-01T00:00:00.000Z`);
+
+const budget = await Budget.create({
+  user: req.user._id,
+  category: categoryId,
+  month: budgetMonth,
+  limitAmount: Number(limitAmount),
+});
+
+const spentMap = await getSpentAmounts(
+  req.user._id,
+  month,
+  [budget.category]
+);
+
+res.status(201).json({
+  data: formatBudget(
+    budget,
+    spentMap[budget.category.toString()] || 0
+  ),
+});
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ message: 'A budget for this category and month already exists' });
     console.error(err);
@@ -82,14 +106,21 @@ router.post('/', async (req, res) => {
 // PATCH /api/v1/budgets/:id
 router.patch('/:id', async (req, res) => {
   try {
-    const budget = await Budget.findOne({ _id: req.params.id, userId: req.user._id });
+        const budget = await Budget.findOne({
+      _id: req.params.id,
+      user: req.user._id
+    });
     if (!budget) return res.status(404).json({ message: 'Budget not found' });
 
     if (req.body.limitAmount !== undefined) budget.limitAmount = Number(req.body.limitAmount);
     await budget.save();
 
-    const spentMap = await getSpentAmounts(req.user._id, budget.month, [budget.categoryId]);
-    res.json({ data: formatBudget(budget, spentMap[budget.categoryId.toString()] || 0) });
+    const month = budget.month.toISOString().slice(0, 7);
+
+      const spentMap = await getSpentAmounts(req.user._id, month, [budget.category]
+ );
+    res.json({ data: formatBudget( budget, spentMap[budget.category.toString()] || 0 )
+  });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -99,7 +130,7 @@ router.patch('/:id', async (req, res) => {
 // DELETE /api/v1/budgets/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const budget = await Budget.findOne({ _id: req.params.id, userId: req.user._id });
+    const budget = await Budget.findOne({ _id: req.params.id, user: req.user._id });
     if (!budget) return res.status(404).json({ message: 'Budget not found' });
     await budget.deleteOne();
     res.json({ data: null, message: 'Budget deleted' });
