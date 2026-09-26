@@ -41,7 +41,7 @@ app.use(`${API}/admin`, adminRoutes);
 app.use((_req, res) => res.status(404).json({ message: 'Route not found' }));
 
 // ── Start ─────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 connectDB().then(() => {
   app.listen(PORT, () => console.log(`CampusCoin server running on port ${PORT}`));
 });

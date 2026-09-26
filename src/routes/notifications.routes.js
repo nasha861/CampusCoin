@@ -7,7 +7,7 @@ router.use(protect);
 function formatNotif(n) {
   return {
     id: n._id.toString(),
-    userId: n.userId.toString(),
+    userId: n.user.toString(),
     type: n.type,
     title: n.title,
     message: n.message,
@@ -19,7 +19,7 @@ function formatNotif(n) {
 // GET /api/v1/notifications
 router.get('/', async (req, res) => {
   try {
-    const notifications = await Notification.find({ userId: req.user._id }).sort({ createdAt: -1 }).limit(50);
+    const notifications = await Notification.find({ user: req.user._id }).sort({ createdAt: -1 }).limit(50);
     res.json({ data: notifications.map(formatNotif) });
   } catch (err) {
     console.error(err);
@@ -30,7 +30,10 @@ router.get('/', async (req, res) => {
 // PATCH /api/v1/notifications/:id/read
 router.patch('/:id/read', async (req, res) => {
   try {
-    const notif = await Notification.findOne({ _id: req.params.id, userId: req.user._id });
+    const notif = await Notification.findOne({
+  _id: req.params.id,
+  user: req.user._id
+});
     if (!notif) return res.status(404).json({ message: 'Notification not found' });
     notif.isRead = true;
     await notif.save();
@@ -44,7 +47,8 @@ router.patch('/:id/read', async (req, res) => {
 // PATCH /api/v1/notifications/read-all
 router.patch('/read-all', async (req, res) => {
   try {
-    await Notification.updateMany({ userId: req.user._id, isRead: false }, { isRead: true });
+    await Notification.updateMany({ user: req.user._id, isRead: false },{ isRead: true }
+);
     res.json({ data: null, message: 'All notifications marked as read' });
   } catch (err) {
     console.error(err);
