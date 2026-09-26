@@ -19,8 +19,27 @@ const dashboardRoutes = require('./src/routes/dashboard.routes');
 const app = express();
 
 // ── Middleware ────────────────────────────────────────────────────────
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
-app.use(express.json());
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests without an origin
+      // such as Postman or server-to-server requests
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  })
+);
 
 // ── Health check ──────────────────────────────────────────────────────
 app.get('/', (_req, res) => res.json({ message: 'CampusCoin API is running' }));
@@ -45,5 +64,8 @@ app.use((_req, res) => res.status(404).json({ message: 'Route not found' }));
 // ── Start ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 connectDB().then(() => {
-  app.listen(PORT, () => console.log(`CampusCoin server running on port ${PORT}`));
-});
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`CampusCoin server running on port ${PORT}`);
+  });
+
+  });
