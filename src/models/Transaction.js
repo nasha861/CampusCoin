@@ -1,3 +1,4 @@
+
 const mongoose = require('mongoose');
 
 const transactionSchema = new mongoose.Schema(
@@ -48,16 +49,33 @@ const transactionSchema = new mongoose.Schema(
       default: Date.now,
     },
 
+    // Optional field used when AI categorization is enabled
     aiSuggestedCategory: {
       type: String,
       trim: true,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-transactionSchema.index({ userId: 1, occurredAt: -1 });
-transactionSchema.index({ userId: 1, categoryId: 1 });
-transactionSchema.index({ userId: 1, type: 1, occurredAt: -1 });
+// Useful query indexes
+transactionSchema.index({
+  userId: 1,
+  occurredAt: -1,
+});
+
+transactionSchema.index({
+  userId: 1,
+  categoryId: 1,
+});
+
+transactionSchema.index({
+  userId: 1,
+  type: 1,
+  occurredAt: -1,
+});
 
 module.exports = mongoose.model('Transaction', transactionSchema);
+

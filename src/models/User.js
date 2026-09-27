@@ -1,3 +1,4 @@
+
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -11,42 +12,88 @@ const settingsSchema = new mongoose.Schema(
     aiCategorizationEnabled: { type: Boolean, default: false },
     aiInsightsEnabled: { type: Boolean, default: false },
   },
-  { _id: false },
+  { _id: false }
 );
 
 const userSchema = new mongoose.Schema(
   {
-    fullName: { type: String, required: true, trim: true },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    passwordHash: { type: String, required: true },
-    role: { type: String, enum: ['student', 'admin'], default: 'student' },
-    //school: { type: String, trim: true },
-    academicYear: { type: String, trim: true },
-    monthlyAllowanceBaseline: { type: Number },
-    savingsGoalAmount: { type: Number },
-    avatarUrl: { type: String },
-    isActive: { type: Boolean, default: true },
-    settings: { type: settingsSchema, default: () => ({}) },
-    // Used for password reset flow
-    resetPasswordToken: { type: String },
-    resetPasswordExpires: { type: Date },
+    fullName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
+
+    passwordHash: {
+      type: String,
+      required: true,
+    },
+
+    role: {
+      type: String,
+      enum: ['student', 'admin'],
+      default: 'student',
+    },
+
+    academicYear: {
+      type: String,
+      trim: true,
+    },
+
+    monthlyAllowanceBaseline: {
+      type: Number,
+    },
+
+    savingsGoalAmount: {
+      type: Number,
+    },
+
+    avatarUrl: {
+      type: String,
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+
+    settings: {
+      type: settingsSchema,
+      default: () => ({}),
+    },
+
+    resetPasswordToken: {
+      type: String,
+    },
+
+    resetPasswordExpires: {
+      type: Date,
+    },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  }
 );
 
 // Compare plain password against stored hash
-userSchema.methods.matchPassword = async function (plain) {
-  return bcrypt.compare(plain, this.passwordHash);
+userSchema.methods.matchPassword = async function (plainPassword) {
+  return bcrypt.compare(plainPassword, this.passwordHash);
 };
 
-// Convert to public-facing shape (strip sensitive fields)
+// Convert user to a safe public object
 userSchema.methods.toPublic = function () {
   return {
     id: this._id.toString(),
     fullName: this.fullName,
     email: this.email,
     role: this.role,
-    school: this.school,
     academicYear: this.academicYear,
     monthlyAllowanceBaseline: this.monthlyAllowanceBaseline,
     savingsGoalAmount: this.savingsGoalAmount,
@@ -58,3 +105,4 @@ userSchema.methods.toPublic = function () {
 };
 
 module.exports = mongoose.model('User', userSchema);
+

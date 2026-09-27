@@ -18,7 +18,13 @@ router.get('/', async (req, res) => {
 // PATCH /api/v1/profile
 router.patch('/', async (req, res) => {
   try {
-    const allowed = ['fullName', 'school', 'academicYear', 'monthlyAllowanceBaseline', 'savingsGoalAmount', 'avatarUrl'];
+    const allowed = [
+  'fullName',
+  'academicYear',
+  'monthlyAllowanceBaseline',
+  'savingsGoalAmount',
+  'avatarUrl',
+];
     const updates = {};
     allowed.forEach((key) => {
       if (req.body[key] !== undefined) updates[key] = req.body[key];

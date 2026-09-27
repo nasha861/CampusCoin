@@ -1,117 +1,548 @@
 const router = require('express').Router();
+
 const Insight = require('../models/Insight');
-const SavingTip = require('../models/SavingTip');
+const MoneyMove = require('../models/MoneyMove');
 const Bookmark = require('../models/Bookmark');
+const Transaction = require('../models/Transaction');
+const Budget = require('../models/Budget');
+const Category = require('../models/Category');
 const { protect } = require('../middleware/auth');
 
 router.use(protect);
 
-function formatInsight(i) {
+// ─────────────────────────────────────────────────────
+// Formatters
+// ─────────────────────────────────────────────────────
+
+function formatInsight(insight) {
   return {
-    id: i._id.toString(),
-    userId: i.userId.toString(),
-    kind: i.kind,
-    title: i.title,
-    body: i.body,
-    month: i.month,
-    isAiGenerated: i.isAiGenerated,
-    createdAt: i.createdAt,
+    id: insight._id.toString(),
+    userId: insight.userId.toString(),
+    kind: insight.kind,
+    title: insight.title,
+    body: insight.body,
+    month: insight.month,
+    isAiGenerated: insight.isAiGenerated,
+    createdAt: insight.createdAt,
   };
 }
 
-function formatTip(t) {
+function formatTip(tip) {
   return {
-    id: t._id.toString(),
-    title: t.title,
-    body: t.body,
-    category: t.category,
-    isAiGenerated: t.isAiGenerated,
-    createdAt: t.createdAt,
+    id: tip._id.toString(),
+    title: tip.title,
+    body: tip.body,
+    category: tip.category,
+    isAiGenerated: tip.isAiGenerated,
+    createdAt: tip.createdAt,
   };
 }
 
-function formatBookmark(b) {
+function formatBookmark(bookmark) {
   return {
-    id: b._id.toString(),
-    userId: b.userId.toString(),
-    targetType: b.targetType,
-    targetId: b.targetId.toString(),
-    createdAt: b.createdAt,
+    id: bookmark._id.toString(),
+    userId: bookmark.userId.toString(),
+    targetType: bookmark.targetType,
+    targetId: bookmark.targetId.toString(),
+    createdAt: bookmark.createdAt,
   };
 }
 
-// GET /api/v1/insights?month=YYYY-MM
+// ─────────────────────────────────────────────────────
+// INSIGHTS
+// ─────────────────────────────────────────────────────
+
+// GET /api/ccoin/insights?month=YYYY-MM
 router.get('/insights', async (req, res) => {
   try {
-    const filter = { userId: req.user._id };
-    if (req.query.month) filter.month = req.query.month;
-    const insights = await Insight.find(filter).sort({ createdAt: -1 });
-    res.json({ data: insights.map(formatInsight) });
+    const filter = {
+      userId: req.user._id,
+    };
+
+    if (req.query.month) {
+      filter.month = req.query.month;
+    }
+
+    const insights = await Insight.find(filter).sort({
+      createdAt: -1,
+    });
+
+    res.json({
+      data: insights.map(formatInsight),
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 
-// GET /api/v1/saving-tips
-router.get('/saving-tips', async (req, res) => {
+// POST /api/ccoin/insights/generate?month=YYYY-MM
+router.post('/insights/generate', async (req, res) => {
   try {
-    // Seed a handful of tips if none exist yet
-    const count = await SavingTip.countDocuments();
+    const month =
+      req.query.month ||
+      new Date().toISOString().slice(0, 7);
+
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({
+        message: 'Month must be in YYYY-MM format',
+      });
+    }
+
+    const [year, monthNumber] = month.split('-').map(Number);
+
+    const start = new Date(
+      Date.UTC(year, monthNumber - 1, 1)
+    );
+
+    const end = new Date(
+      Date.UTC(year, monthNumber, 1)
+    );
+
+    const transactions = await Transaction.find({
+      userId: req.user._id,
+      occurredAt: {
+        $gte: start,
+        $lt: end,
+      },
+    });
+
+    if (transactions.length === 0) {
+      return res.json({
+        data: null,
+        message: 'No transactions found for this month',
+      });
+    }
+
+    const totalIncome = transactions
+      .filter((transaction) => transaction.type === 'income')
+      .reduce(
+        (sum, transaction) => sum + transaction.amount,
+        0
+      );
+
+    const totalExpense = transactions
+      .filter((transaction) => transaction.type === 'expense')
+      .reduce(
+        (sum, transaction) => sum + transaction.amount,
+        0
+      );
+
+    const netSavings = totalIncome - totalExpense;
+
+    // ── Expense totals by category ──────────────────
+    const expenseTotals = {};
+
+    transactions
+      .filter((transaction) => transaction.type === 'expense')
+      .forEach((transaction) => {
+        const categoryId = transaction.categoryId.toString();
+
+        expenseTotals[categoryId] =
+          (expenseTotals[categoryId] || 0) +
+          transaction.amount;
+      });
+
+    const categoryIds = Object.keys(expenseTotals);
+
+    const categories = await Category.find({
+      _id: {
+        $in: categoryIds,
+      },
+    });
+
+    const categoryMap = {};
+
+    categories.forEach((category) => {
+      categoryMap[category._id.toString()] = category.name;
+    });
+
+    let topCategoryId = null;
+    let topCategoryAmount = 0;
+
+    Object.entries(expenseTotals).forEach(
+      ([categoryId, amount]) => {
+        if (amount > topCategoryAmount) {
+          topCategoryId = categoryId;
+          topCategoryAmount = amount;
+        }
+      }
+    );
+
+    const topCategoryName = topCategoryId
+      ? categoryMap[topCategoryId] || 'Unknown'
+      : null;
+
+    // ── Budget check ─────────────────────────────────
+    const budgetMonth = new Date(
+      Date.UTC(year, monthNumber - 1, 1)
+    );
+
+    const budgets = await Budget.find({
+      userId: req.user._id,
+      month: budgetMonth,
+    });
+
+    let exceededBudgets = 0;
+
+    budgets.forEach((budget) => {
+      const spent =
+        expenseTotals[
+          budget.categoryId.toString()
+        ] || 0;
+
+      if (spent > budget.limitAmount) {
+        exceededBudgets += 1;
+      }
+    });
+
+    // ── Build insight text ───────────────────────────
+    let body = '';
+
+    if (totalIncome > 0) {
+      body += `You recorded ₦${totalIncome.toLocaleString()} in income and ₦${totalExpense.toLocaleString()} in expenses this month. `;
+    } else {
+      body += `You recorded ₦${totalExpense.toLocaleString()} in expenses this month with no recorded income. `;
+    }
+
+    body += `Your net savings were ₦${netSavings.toLocaleString()}. `;
+
+    if (topCategoryName) {
+      body += `Your highest expense category was ${topCategoryName}, with ₦${topCategoryAmount.toLocaleString()} spent. `;
+    }
+
+    if (exceededBudgets > 0) {
+      body += `You exceeded ${exceededBudgets} budget ${
+        exceededBudgets === 1
+          ? 'category'
+          : 'categories'
+      } this month. Review those areas before next month.`;
+    } else if (netSavings > 0) {
+      body +=
+        'Your recorded spending remained below your income this month. Keep tracking your expenses to maintain this progress.';
+    } else {
+      body +=
+        'Reviewing your largest expense categories may help you reduce spending next month.';
+    }
+
+    const insight = await Insight.findOneAndUpdate(
+      {
+        userId: req.user._id,
+        kind: 'monthly-summary',
+        month,
+      },
+      {
+        userId: req.user._id,
+        kind: 'monthly-summary',
+        title: `Monthly spending summary for ${month}`,
+        body,
+        month,
+        isAiGenerated: false,
+      },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+
+    res.json({
+      data: formatInsight(insight),
+    });
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      message: 'Server error',
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────
+// SAVING TIPS
+// ─────────────────────────────────────────────────────
+
+// GET /api/ccoin/money-moves
+router.get('/money-moves', async (req, res) => {
+  try {
+    // Seed general tips once
+    const count = await MoneyMove.countDocuments();
+
     if (count === 0) {
-      await SavingTip.insertMany([
-        { title: 'Cook at home', body: 'Preparing your own meals can save you up to 60% compared to eating out regularly.', category: 'Food & Drinks' },
-        { title: 'Use student discounts', body: 'Always carry your student ID — many stores, cinemas, and transport services offer significant discounts.', category: 'Shopping' },
-        { title: 'Track every naira', body: 'Logging even small expenses keeps you aware of where your money is going and helps spot patterns.', category: 'General' },
-        { title: 'Set a weekly spending limit', body: 'Break your monthly budget into weekly chunks so overspending is caught early.', category: 'General' },
-        { title: 'Buy second-hand textbooks', body: 'Second-hand or digital textbooks can cost a fraction of new copies.', category: 'Education' },
-        { title: 'Walk or cycle short distances', body: 'Skipping transport fares for short trips adds up to meaningful savings over a month.', category: 'Transport' },
+      await MoneyMove.insertMany([
+        {
+          title: 'Cook at home',
+          body: 'Making your own meals instead of eating out can reduce food spending.',
+          category: 'Food & Drinks',
+        },
+        {
+          title: 'Use student discounts',
+          body: 'Carry your student ID and check for student discounts before paying.',
+          category: 'Shopping',
+        },
+        {
+          title: 'Track every naira',
+          body: 'Recording small expenses helps you identify spending patterns.',
+          category: 'General',
+        },
+        {
+          title: 'Set weekly spending limits',
+          body: 'Breaking your monthly budget into weekly targets can help you detect overspending early.',
+          category: 'General',
+        },
+        {
+          title: 'Buy used or digital textbooks',
+          body: 'Second-hand books or digital textbooks can reduce education costs.',
+          category: 'Education',
+        },
+        {
+          title: 'Walk or cycle short distances',
+          body: 'Reducing transport costs on short trips can add up to meaningful savings.',
+          category: 'Transport',
+        },
       ]);
     }
-    const tips = await SavingTip.find().sort({ createdAt: -1 });
-    res.json({ data: tips.map(formatTip) });
+
+    const generalTips = await MoneyMove.find({
+      isAiGenerated: false,
+    }).sort({
+      createdAt: -1,
+    });
+
+    // ── Current month ────────────────────────────────
+    const now = new Date();
+
+    const startOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1
+    );
+
+    const startOfNextMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      1
+    );
+
+    const transactions = await Transaction.find({
+      userId: req.user._id,
+      type: 'expense',
+      occurredAt: {
+        $gte: startOfMonth,
+        $lt: startOfNextMonth,
+      },
+    });
+
+    // ── Spending by category ─────────────────────────
+    const spendingMap = {};
+
+    transactions.forEach((transaction) => {
+      const categoryId = transaction.categoryId.toString();
+
+      spendingMap[categoryId] =
+        (spendingMap[categoryId] || 0) +
+        transaction.amount;
+    });
+
+    const categoryIds = Object.keys(spendingMap);
+
+    const categories = await Category.find({
+      _id: {
+        $in: categoryIds,
+      },
+    });
+
+    const categoryMap = {};
+
+    categories.forEach((category) => {
+      categoryMap[category._id.toString()] = category;
+    });
+
+    // ── Current month budgets ────────────────────────
+    const budgetMonth = new Date(
+      Date.UTC(
+        now.getFullYear(),
+        now.getMonth(),
+        1
+      )
+    );
+
+    const budgets = await Budget.find({
+      userId: req.user._id,
+      month: budgetMonth,
+      categoryId: {
+        $in: categoryIds,
+      },
+    });
+
+    const budgetMap = {};
+
+    budgets.forEach((budget) => {
+      budgetMap[budget.categoryId.toString()] =
+        budget.limitAmount;
+    });
+
+    // ── Personalized tips ────────────────────────────
+    const personalizedTips = [];
+
+    for (const categoryId of categoryIds) {
+      const category = categoryMap[categoryId];
+
+      if (!category) {
+        continue;
+      }
+
+      const spent = spendingMap[categoryId];
+      const budget = budgetMap[categoryId];
+
+      if (budget && spent > budget) {
+        personalizedTips.push({
+          id: `personalized-${categoryId}-budget`,
+          title: `${category.name} is over budget`,
+          body: `You have spent ₦${spent.toLocaleString()} on ${category.name}, which is above your ₦${budget.toLocaleString()} budget. Consider reducing spending in this category.`,
+          category: category.name,
+          isAiGenerated: false,
+          priority: spent - budget,
+        });
+
+        continue;
+      }
+
+      if (budget && spent >= budget * 0.8) {
+        personalizedTips.push({
+          id: `personalized-${categoryId}-near`,
+          title: `Watch your ${category.name} spending`,
+          body: `You have used ${Math.round(
+            (spent / budget) * 100
+          )}% of your ${category.name} budget this month.`,
+          category: category.name,
+          isAiGenerated: false,
+          priority: spent,
+        });
+      }
+    }
+
+    personalizedTips.sort(
+      (a, b) => b.priority - a.priority
+    );
+
+    res.json({
+      data: [
+        ...personalizedTips.map(
+          ({ priority, ...tip }) => tip
+        ),
+        ...generalTips.map(formatTip),
+      ],
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 
-// GET /api/v1/bookmarks
+// ─────────────────────────────────────────────────────
+// BOOKMARKS
+// ─────────────────────────────────────────────────────
+
+// GET /api/ccoin/bookmarks
 router.get('/bookmarks', async (req, res) => {
   try {
-    const bookmarks = await Bookmark.find({ userId: req.user._id }).sort({ createdAt: -1 });
-    res.json({ data: bookmarks.map(formatBookmark) });
+    const bookmarks = await Bookmark.find({
+      userId: req.user._id,
+    }).sort({
+      createdAt: -1,
+    });
+
+    res.json({
+      data: bookmarks.map(formatBookmark),
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 
-// POST /api/v1/bookmarks
+// POST /api/ccoin/bookmarks
 router.post('/bookmarks', async (req, res) => {
   try {
-    const { targetType, targetId } = req.body;
-    if (!targetType || !targetId) return res.status(400).json({ message: 'targetType and targetId are required' });
+    const {
+      targetType,
+      targetId,
+    } = req.body;
 
-    const bookmark = await Bookmark.create({ userId: req.user._id, targetType, targetId });
-    res.status(201).json({ data: formatBookmark(bookmark) });
+    if (!targetType || !targetId) {
+      return res.status(400).json({
+        message:
+          'targetType and targetId are required',
+      });
+    }
+
+    if (!['insight', 'saving-tip'].includes(targetType)) {
+      return res.status(400).json({
+        message:
+          'targetType must be insight or saving-tip',
+      });
+    }
+
+    const bookmark = await Bookmark.create({
+      userId: req.user._id,
+      targetType,
+      targetId,
+    });
+
+    res.status(201).json({
+      data: formatBookmark(bookmark),
+    });
   } catch (err) {
-    if (err.code === 11000) return res.status(409).json({ message: 'Already bookmarked' });
+    if (err.code === 11000) {
+      return res.status(409).json({
+        message: 'Already bookmarked',
+      });
+    }
+
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 
-// DELETE /api/v1/bookmarks/:id
+// DELETE /api/ccoin/bookmarks/:id
 router.delete('/bookmarks/:id', async (req, res) => {
   try {
-    const bookmark = await Bookmark.findOne({ _id: req.params.id, userId: req.user._id });
-    if (!bookmark) return res.status(404).json({ message: 'Bookmark not found' });
+    const bookmark = await Bookmark.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+
+    if (!bookmark) {
+      return res.status(404).json({
+        message: 'Bookmark not found',
+      });
+    }
+
     await bookmark.deleteOne();
-    res.json({ data: null, message: 'Bookmark removed' });
+
+    res.json({
+      data: null,
+      message: 'Bookmark removed',
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 

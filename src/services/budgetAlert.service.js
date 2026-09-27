@@ -2,28 +2,46 @@ const Budget = require('../models/Budget');
 const Transaction = require('../models/Transaction');
 const Notification = require('../models/Notification');
 
-async function checkBudgetAfterTransaction(userId, categoryId, occurredAt) {
+async function checkBudgetAfterTransaction(
+  userId,
+  categoryId,
+  occurredAt
+) {
   try {
     const date = new Date(occurredAt);
 
-    const month = `${date.getFullYear()}-${String(
-      date.getMonth() + 1
-    ).padStart(2, '0')}`;
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
 
-    const budgetMonth = new Date(`${month}-01T00:00:00.000Z`);
+    const year = date.getUTCFullYear();
+    const monthNumber = date.getUTCMonth();
 
-        
+    const month = `${year}-${String(monthNumber + 1).padStart(2, '0')}`;
 
-        const budget = await Budget.findOne({
-        user: userId,
-        category: categoryId,
-        month: budgetMonth,
-        });
+    const budgetMonth = new Date(
+      Date.UTC(year, monthNumber, 1)
+    );
+
+    // Find the budget for this user/category/month
+    const budget = await Budget.findOne({
+      userId,
+      categoryId,
+      month: budgetMonth,
+    });
+
     // No budget exists for this category/month.
-    if (!budget) return null;
+    if (!budget) {
+      return null;
+    }
 
-    const start = new Date(date.getFullYear(), date.getMonth(), 1);
-    const end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+    const start = new Date(
+      Date.UTC(year, monthNumber, 1)
+    );
+
+    const end = new Date(
+      Date.UTC(year, monthNumber + 1, 1)
+    );
 
     const result = await Transaction.aggregate([
       {
@@ -40,7 +58,9 @@ async function checkBudgetAfterTransaction(userId, categoryId, occurredAt) {
       {
         $group: {
           _id: null,
-          totalSpent: { $sum: '$amount' },
+          totalSpent: {
+            $sum: '$amount',
+          },
         },
       },
     ]);
@@ -52,50 +72,65 @@ async function checkBudgetAfterTransaction(userId, categoryId, occurredAt) {
         ? (totalSpent / budget.limitAmount) * 100
         : 0;
 
+    let notificationType = null;
+    let title = null;
+    let message = null;
+    let severity = null;
+
     // Budget exceeded
     if (percentage >= 100) {
-      return Notification.create({
-        user: userId,
-        type: 'budget-exceeded',
-        title: 'Budget exceeded',
-        message: `You have exceeded your budget for this category.`,
-        severity: 'high',
-        meta: {
-          budgetId: budget._id,
-          categoryId,
-          month,
-          limitAmount: budget.limitAmount,
-          totalSpent,
-          percentage: Math.round(percentage),
-        },
-      });
+      notificationType = 'budget-exceeded';
+      title = 'Budget exceeded';
+      message =
+        'You have exceeded your budget for this category.';
+      severity = 'high';
     }
-
     // Budget approaching limit
-    if (percentage >= 80) {
-      return Notification.create({
-        user: userId,
-        type: 'budget-near',
-        title: 'Budget warning',
-        message: `You have used ${Math.round(
-          percentage
-        )}% of your budget for this category.`,
-        severity: 'medium',
-        meta: {
-          budgetId: budget._id,
-          categoryId,
-          month,
-          limitAmount: budget.limitAmount,
-          totalSpent,
-          percentage: Math.round(percentage),
-        },
-      });
+    else if (percentage >= 80) {
+      notificationType = 'budget-near';
+      title = 'Budget warning';
+      message = `You have used ${Math.round(
+        percentage
+      )}% of your budget for this category.`;
+      severity = 'medium';
+    }
+    // Still below warning threshold
+    else {
+      return null;
     }
 
-    return null;
+    // Prevent repeated notifications for the same
+    // budget threshold during the same month.
+    const existingNotification =
+      await Notification.findOne({
+        userId,
+        type: notificationType,
+        'meta.budgetId': budget._id,
+        'meta.month': month,
+      });
+
+    if (existingNotification) {
+      return existingNotification;
+    }
+
+    return Notification.create({
+      userId,
+      type: notificationType,
+      title,
+      message,
+      severity,
+      meta: {
+        budgetId: budget._id,
+        categoryId,
+        month,
+        limitAmount: budget.limitAmount,
+        totalSpent,
+        percentage: Math.round(percentage),
+      },
+    });
   } catch (err) {
-    // Notification failure should not prevent the transaction itself
-    // from succeeding.
+    // Notification failure should never prevent
+    // the transaction itself from succeeding.
     console.error('Budget alert error:', err);
     return null;
   }

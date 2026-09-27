@@ -1,58 +1,100 @@
+
 const router = require('express').Router();
+
 const Notification = require('../models/Notification');
 const { protect } = require('../middleware/auth');
 
 router.use(protect);
 
-function formatNotif(n) {
+function formatNotif(notification) {
   return {
-    id: n._id.toString(),
-    userId: n.user.toString(),
-    type: n.type,
-    title: n.title,
-    message: n.message,
-    isRead: n.isRead,
-    createdAt: n.createdAt,
+    id: notification._id.toString(),
+    userId: notification.userId.toString(),
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    severity: notification.severity,
+    isRead: notification.isRead,
+    isDismissed: notification.isDismissed,
+    meta: notification.meta,
+    createdAt: notification.createdAt,
   };
 }
 
-// GET /api/v1/notifications
+// GET /api/ccoin/notifications
 router.get('/', async (req, res) => {
   try {
-    const notifications = await Notification.find({ user: req.user._id }).sort({ createdAt: -1 }).limit(50);
-    res.json({ data: notifications.map(formatNotif) });
+    const notifications = await Notification.find({
+      userId: req.user._id,
+    })
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    res.json({
+      data: notifications.map(formatNotif),
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 
-// PATCH /api/v1/notifications/:id/read
+// PATCH /api/ccoin/notifications/:id/read
 router.patch('/:id/read', async (req, res) => {
   try {
-    const notif = await Notification.findOne({
-  _id: req.params.id,
-  user: req.user._id
-});
-    if (!notif) return res.status(404).json({ message: 'Notification not found' });
-    notif.isRead = true;
-    await notif.save();
-    res.json({ data: formatNotif(notif) });
+    const notification = await Notification.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+
+    if (!notification) {
+      return res.status(404).json({
+        message: 'Notification not found',
+      });
+    }
+
+    notification.isRead = true;
+
+    await notification.save();
+
+    res.json({
+      data: formatNotif(notification),
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 
-// PATCH /api/v1/notifications/read-all
+// PATCH /api/ccoin/notifications/read-all
 router.patch('/read-all', async (req, res) => {
   try {
-    await Notification.updateMany({ user: req.user._id, isRead: false },{ isRead: true }
-);
-    res.json({ data: null, message: 'All notifications marked as read' });
+    await Notification.updateMany(
+      {
+        userId: req.user._id,
+        isRead: false,
+      },
+      {
+        isRead: true,
+      }
+    );
+
+    res.json({
+      data: null,
+      message: 'All notifications marked as read',
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 

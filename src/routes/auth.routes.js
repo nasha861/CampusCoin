@@ -1,7 +1,9 @@
+
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+
 const User = require('../models/User');
 const Category = require('../models/Category');
 const { protect } = require('../middleware/auth');
@@ -24,30 +26,80 @@ const DEFAULT_CATEGORIES = [
 ];
 
 function signTokens(userId) {
-  const accessToken = jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '15m' });
-  const refreshToken = jwt.sign({ id: userId, type: 'refresh' }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  const accessToken = jwt.sign(
+    { id: userId },
+    process.env.JWT_SECRET,
+    { expiresIn: '15m' }
+  );
+
+  const refreshToken = jwt.sign(
+    { id: userId, type: 'refresh' },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
   return { accessToken, refreshToken };
 }
 
-// POST /api/v1/auth/register
+// POST /api/ccoin/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { fullName, email, password, school, academicYear, monthlyAllowanceBaseline, savingsGoalAmount } = req.body;
+    const {
+      fullName,
+      email,
+      password,
+      academicYear,
+      monthlyAllowanceBaseline,
+      savingsGoalAmount,
+    } = req.body;
 
-    if (!fullName?.trim()) return res.status(400).json({ message: 'Full name is required', fieldErrors: { fullName: 'Required' } });
-    if (!email?.trim()) return res.status(400).json({ message: 'Email is required', fieldErrors: { email: 'Required' } });
-    if (!password || password.length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters', fieldErrors: { password: 'At least 8 characters' } });
+    if (!fullName?.trim()) {
+      return res.status(400).json({
+        message: 'Full name is required',
+        fieldErrors: {
+          fullName: 'Required',
+        },
+      });
+    }
 
-    const existing = await User.findOne({ email: email.toLowerCase().trim() });
-    if (existing) return res.status(409).json({ message: 'An account with this email already exists. Log in instead.', code: 'EMAIL_TAKEN' });
+    if (!email?.trim()) {
+      return res.status(400).json({
+        message: 'Email is required',
+        fieldErrors: {
+          email: 'Required',
+        },
+      });
+    }
+
+    if (!password || password.length < 8) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters',
+        fieldErrors: {
+          password: 'At least 8 characters',
+        },
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existing = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        message: 'An account with this email already exists. Log in instead.',
+        code: 'EMAIL_TAKEN',
+      });
+    }
 
     const passwordHash = await bcrypt.hash(password, 12);
+
     const user = await User.create({
       fullName: fullName.trim(),
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
       passwordHash,
       role: 'student',
-      school,
       academicYear,
       monthlyAllowanceBaseline,
       savingsGoalAmount,
@@ -55,109 +107,224 @@ router.post('/register', async (req, res) => {
 
     // Seed default categories for the new user
     await Category.insertMany(
-      DEFAULT_CATEGORIES.map((c) => ({ ...c, userId: user._id, isDefault: true })),
+      DEFAULT_CATEGORIES.map((category) => ({
+        ...category,
+        userId: user._id,
+        isDefault: true,
+      }))
     );
 
     const { accessToken, refreshToken } = signTokens(user._id);
-    res.status(201).json({ data: { user: user.toPublic(), accessToken, refreshToken } });
+
+    res.status(201).json({
+      data: {
+        user: user.toPublic(),
+        accessToken,
+        refreshToken,
+      },
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 
-// POST /api/v1/auth/login
+// POST /api/ccoin/auth/login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: 'Email and password are required' });
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) return res.status(404).json({ message: 'No account found with this email. Create one instead.', code: 'ACCOUNT_NOT_FOUND' });
+    if (!email || !password) {
+      return res.status(400).json({
+        message: 'Email and password are required',
+      });
+    }
+
+    const user = await User.findOne({
+      email: email.toLowerCase().trim(),
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'No account found with this email. Create one instead.',
+        code: 'ACCOUNT_NOT_FOUND',
+      });
+    }
 
     const match = await user.matchPassword(password);
-    if (!match) return res.status(401).json({ message: 'Incorrect password. Please try again.', code: 'INVALID_PASSWORD' });
 
-    if (!user.isActive) return res.status(403).json({ message: 'Account suspended', code: 'ACCOUNT_SUSPENDED' });
+    if (!match) {
+      return res.status(401).json({
+        message: 'Incorrect password. Please try again.',
+        code: 'INVALID_PASSWORD',
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        message: 'Account suspended',
+        code: 'ACCOUNT_SUSPENDED',
+      });
+    }
 
     const { accessToken, refreshToken } = signTokens(user._id);
-    res.json({ data: { user: user.toPublic(), accessToken, refreshToken } });
+
+    res.json({
+      data: {
+        user: user.toPublic(),
+        accessToken,
+        refreshToken,
+      },
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 
-// POST /api/v1/auth/logout  (client-side token drop; server-side is a no-op for stateless JWT)
+// POST /api/ccoin/auth/logout
 router.post('/logout', protect, (_req, res) => {
-  res.json({ data: null, message: 'Logged out' });
+  res.json({
+    data: null,
+    message: 'Logged out',
+  });
 });
 
-// POST /api/v1/auth/refresh
+// POST /api/ccoin/auth/refresh
 router.post('/refresh', async (req, res) => {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) return res.status(400).json({ message: 'Refresh token required' });
 
-    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
-    if (decoded.type !== 'refresh') return res.status(401).json({ message: 'Invalid token type' });
+    if (!refreshToken) {
+      return res.status(400).json({
+        message: 'Refresh token required',
+      });
+    }
+
+    const decoded = jwt.verify(
+      refreshToken,
+      process.env.JWT_SECRET
+    );
+
+    if (decoded.type !== 'refresh') {
+      return res.status(401).json({
+        message: 'Invalid token type',
+      });
+    }
 
     const user = await User.findById(decoded.id);
-    if (!user || !user.isActive) return res.status(401).json({ message: 'User not found or suspended' });
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({
+        message: 'User not found or suspended',
+      });
+    }
 
     const tokens = signTokens(user._id);
-    res.json({ data: { user: user.toPublic(), ...tokens } });
+
+    res.json({
+      data: {
+        user: user.toPublic(),
+        ...tokens,
+      },
+    });
   } catch {
-    res.status(401).json({ message: 'Invalid or expired refresh token', code: 'INVALID_TOKEN' });
+    res.status(401).json({
+      message: 'Invalid or expired refresh token',
+      code: 'INVALID_TOKEN',
+    });
   }
 });
 
-// POST /api/v1/auth/forgot-password
+// POST /api/ccoin/auth/forgot-password
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email: email?.toLowerCase().trim() });
+
+    const user = await User.findOne({
+      email: email?.toLowerCase().trim(),
+    });
+
     // Always return 200 to prevent email enumeration
-    if (!user) return res.json({ data: null, message: 'If that email exists, a reset link was sent.' });
+    if (!user) {
+      return res.json({
+        data: null,
+        message: 'If that email exists, a reset link was sent.',
+      });
+    }
 
     const token = crypto.randomBytes(32).toString('hex');
+
     user.resetPasswordToken = token;
-    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    user.resetPasswordExpires = new Date(
+      Date.now() + 60 * 60 * 1000
+    );
+
     await user.save();
 
     // TODO: send email via nodemailer using EMAIL_USER / EMAIL_PASS
-    console.log(`[DEV] Password reset token for ${email}: ${token}`);
+    console.log(
+      `[DEV] Password reset token for ${email}: ${token}`
+    );
 
-    res.json({ data: null, message: 'If that email exists, a reset link was sent.' });
+    res.json({
+      data: null,
+      message: 'If that email exists, a reset link was sent.',
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 
-// POST /api/v1/auth/reset-password
+// POST /api/ccoin/auth/reset-password
 router.post('/reset-password', async (req, res) => {
   try {
     const { token, newPassword } = req.body;
+
     if (!token || !newPassword || newPassword.length < 8) {
-      return res.status(400).json({ message: 'Token and a new password (min 8 chars) are required' });
+      return res.status(400).json({
+        message: 'Token and a new password (min 8 chars) are required',
+      });
     }
 
     const user = await User.findOne({
       resetPasswordToken: token,
       resetPasswordExpires: { $gt: new Date() },
     });
-    if (!user) return res.status(400).json({ message: 'Token is invalid or has expired', code: 'INVALID_TOKEN' });
+
+    if (!user) {
+      return res.status(400).json({
+        message: 'Token is invalid or has expired',
+        code: 'INVALID_TOKEN',
+      });
+    }
 
     user.passwordHash = await bcrypt.hash(newPassword, 12);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
+
     await user.save();
 
-    res.json({ data: null, message: 'Password reset successful' });
+    res.json({
+      data: null,
+      message: 'Password reset successful',
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: 'Server error',
+    });
   }
 });
 

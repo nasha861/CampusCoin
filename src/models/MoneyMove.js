@@ -10,4 +10,8 @@ const savingTipSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-module.exports = mongoose.model('SavingTip', savingTipSchema);
+module.exports = mongoose.model(
+  'MoneyMove',
+  savingTipSchema,
+  'savingtips'
+);
