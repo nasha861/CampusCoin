@@ -1,6 +1,6 @@
 const router = require('express').Router();
 
-const RecurringTransaction = require('../models/RecurringTransaction');
+const MoneyRoutine = require('../models/MoneyRoutine');
 const Transaction = require('../models/Transaction');
 const Category = require('../models/Category');
 const { protect } = require('../middleware/auth');
@@ -54,10 +54,10 @@ function getNextRunDate(date, frequency, interval) {
   return next;
 }
 
-// GET /api/ccoin/recurring-transactions
+// GET /api/ccoin/money-routines
 router.get('/', async (req, res) => {
   try {
-    const items = await RecurringTransaction.find({
+    const items = await MoneyRoutine.find({
       user: req.user._id,
     }).sort({ nextRunAt: 1 });
 
@@ -73,7 +73,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/ccoin/recurring-transactions
+// POST /api/ccoin/money-routines
 router.post('/', async (req, res) => {
   try {
     const {
@@ -134,7 +134,7 @@ router.post('/', async (req, res) => {
 
     const firstRun = new Date(startDate);
 
-    const recurring = await RecurringTransaction.create({
+    const recurring = await MoneyRoutine.create({
       user: req.user._id,
       category: categoryId,
       amount: Number(amount),
@@ -160,10 +160,10 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PATCH /api/ccoin/recurring-transactions/:id
+// PATCH /api/ccoin/money-routines/:id
 router.patch('/:id', async (req, res) => {
   try {
-    const recurring = await RecurringTransaction.findOne({
+    const recurring = await MoneyRoutine.findOne({
       _id: req.params.id,
       user: req.user._id,
     });
@@ -223,10 +223,10 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/ccoin/recurring-transactions/:id
+// DELETE /api/ccoin/money-routines/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const recurring = await RecurringTransaction.findOne({
+    const recurring = await MoneyRoutine.findOne({
       _id: req.params.id,
       user: req.user._id,
     });
@@ -253,14 +253,14 @@ router.delete('/:id', async (req, res) => {
 });
 
 /*
-  Process recurring transactions that are due.
+  Process money-routines that are due.
 
   This creates a normal Transaction and moves nextRunAt forward.
 */
 async function processDueRecurringTransactions() {
   const now = new Date();
 
-  const dueItems = await RecurringTransaction.find({
+  const dueItems = await MoneyRoutine.find({
     isActive: true,
     nextRunAt: { $lte: now },
     $or: [
@@ -300,7 +300,7 @@ async function processDueRecurringTransactions() {
   return dueItems.length;
 }
 
-// POST /api/ccoin/recurring-transactions/process
+// POST /api/ccoin/money-routines/process
 router.post('/process', async (req, res) => {
   try {
     const processed = await processDueRecurringTransactionsForUser(
@@ -325,7 +325,7 @@ router.post('/process', async (req, res) => {
 async function processDueRecurringTransactionsForUser(userId) {
   const now = new Date();
 
-  const dueItems = await RecurringTransaction.find({
+  const dueItems = await MoneyRoutine.find({
     user: userId,
     isActive: true,
     nextRunAt: { $lte: now },

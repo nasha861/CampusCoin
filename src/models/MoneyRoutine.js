@@ -27,4 +27,8 @@ const recurringSchema = new mongoose.Schema(
 
 recurringSchema.index({ user: 1, isActive: 1, nextRunAt: 1 });
 
-module.exports = mongoose.model('RecurringTransaction', recurringSchema);
+module.exports = mongoose.model(
+  'MoneyRoutine',
+  recurringSchema,
+  'recurringtransactions'
+);;
