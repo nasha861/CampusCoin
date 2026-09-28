@@ -74,6 +74,7 @@ function registerRoutes(prefix) {
   app.use(`${prefix}/ai`, aiRoutes);
   app.use(`${prefix}/budgets`, budgetsRoutes);
   app.use(`${prefix}/reports`, reportsRoutes);
+  
   app.use(`${prefix}/money-routines`, recurringRoutes.router);
 
   // insights.routes handles:

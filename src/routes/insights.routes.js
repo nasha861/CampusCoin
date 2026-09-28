@@ -2,6 +2,7 @@ const router = require('express').Router();
 
 const Insight = require('../models/Insight');
 const MoneyMove = require('../models/MoneyMove');
+const DismissedMoneyMove = require('../models/DismissedMoneyMove');
 const Bookmark = require('../models/Bookmark');
 const Transaction = require('../models/Transaction');
 const Budget = require('../models/Budget');
@@ -306,11 +307,21 @@ router.get('/money-moves', async (req, res) => {
       ]);
     }
 
+
+
     const generalTips = await MoneyMove.find({
       isAiGenerated: false,
     }).sort({
       createdAt: -1,
     });
+
+    const dismissedMoneyMoves = await DismissedMoneyMove.find({
+      userId: req.user._id,
+    }).select('moneyMoveId');
+
+    const dismissedIds = new Set(
+      dismissedMoneyMoves.map((item) => item.moneyMoveId)
+    );
 
     // ── Current month ────────────────────────────────
     const now = new Date();
@@ -429,13 +440,76 @@ router.get('/money-moves', async (req, res) => {
       (a, b) => b.priority - a.priority
     );
 
+   const visiblePersonalizedTips = personalizedTips.filter(
+  (tip) => !dismissedIds.has(tip.id)
+);
+
+const visibleGeneralTips = generalTips
+  .filter((tip) => !dismissedIds.has(tip._id.toString()))
+  .map(formatTip);
+
     res.json({
       data: [
-        ...personalizedTips.map(
+        ...visiblePersonalizedTips.map(
           ({ priority, ...tip }) => tip
         ),
-        ...generalTips.map(formatTip),
+        ...visibleGeneralTips,
       ],
+    });
+    
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      message: 'Server error',
+    });
+  }
+});
+
+// POST /api/ccoin/money-moves/:id/dismiss
+router.post('/money-moves/:id/dismiss', async (req, res) => {
+  try {
+    const dismissed = await DismissedMoneyMove.findOneAndUpdate(
+      {
+        userId: req.user._id,
+        moneyMoveId: req.params.id,
+      },
+      {
+        userId: req.user._id,
+        moneyMoveId: req.params.id,
+      },
+      {
+        new: true,
+        upsert: true,
+      }
+    );
+
+    res.json({
+      message: 'Money Move dismissed',
+      data: {
+        id: dismissed._id,
+        moneyMoveId: dismissed.moneyMoveId,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      message: 'Server error',
+    });
+  }
+});
+
+// DELETE /api/ccoin/money-moves/:id/dismiss
+router.delete('/money-moves/:id/dismiss', async (req, res) => {
+  try {
+    await DismissedMoneyMove.findOneAndDelete({
+      userId: req.user._id,
+      moneyMoveId: req.params.id,
+    });
+
+    res.json({
+      message: 'Money Move restored',
     });
   } catch (err) {
     console.error(err);
