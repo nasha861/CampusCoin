@@ -29,13 +29,13 @@ function signTokens(userId) {
   const accessToken = jwt.sign(
     { id: userId },
     process.env.JWT_SECRET,
-    { expiresIn: '15m' }
+    { expiresIn: '3h' }
   );
 
   const refreshToken = jwt.sign(
     { id: userId, type: 'refresh' },
     process.env.JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '30d' }
   );
 
   return { accessToken, refreshToken };
