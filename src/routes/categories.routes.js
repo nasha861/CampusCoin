@@ -35,8 +35,17 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { name, type, icon, color } = req.body;
-    if (!name?.trim() || !type) return res.status(400).json({ message: 'Name and type are required' });
+if (!name?.trim() || !type) {
+  return res.status(400).json({
+    message: 'Name and type are required',
+  });
+}
 
+if (!['income', 'expense'].includes(type)) {
+  return res.status(400).json({
+    message: 'type must be either income or expense',
+  });
+}
     const category = await Category.create({ name: name.trim(), type, icon, color, userId: req.user._id, isDefault: false });
     res.status(201).json({ data: formatCategory(category) });
   } catch (err) {

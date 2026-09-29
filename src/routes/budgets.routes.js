@@ -1,8 +1,10 @@
 
 const router = require('express').Router();
+const mongoose = require('mongoose');
 
 const Budget = require('../models/Budget');
 const Transaction = require('../models/Transaction');
+const Category = require('../models/Category');
 const { protect } = require('../middleware/auth');
 
 router.use(protect);
@@ -140,6 +142,50 @@ router.post('/', async (req, res) => {
       });
     }
 
+ const monthMatch = /^(\d{4})-(\d{2})$/.exec(month);
+
+    if (!monthMatch) {
+      return res.status(400).json({
+        message: 'month must be in YYYY-MM format',
+      });
+    }
+
+    const monthNumber = Number(monthMatch[2]);
+
+    if (monthNumber < 1 || monthNumber > 12) {
+      return res.status(400).json({
+        message: 'month must be between 01 and 12',
+      });
+    }
+
+const numericLimit = Number(limitAmount);
+
+   if (!Number.isFinite(numericLimit) || numericLimit < 0) {
+  return res.status(400).json({
+    message: 'limitAmount must be a valid number greater than or equal to 0',
+  });
+}
+
+if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+  return res.status(400).json({
+    message: 'Invalid category ID',
+  });
+}
+
+const category = await Category.findOne({
+  _id: categoryId,
+  $or: [
+    { userId: req.user._id },
+    { userId: null },
+  ],
+});
+
+if (!category) {
+  return res.status(400).json({
+    message: 'Invalid category',
+  });
+}
+
     const budgetMonth = new Date(
       `${month}-01T00:00:00.000Z`
     );
@@ -148,7 +194,7 @@ router.post('/', async (req, res) => {
       userId: req.user._id,
       categoryId,
       month: budgetMonth,
-      limitAmount: Number(limitAmount),
+      limitAmount: numericLimit,
     });
 
     const spentMap = await getSpentAmounts(

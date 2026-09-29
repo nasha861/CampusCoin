@@ -1,5 +1,5 @@
 const router = require('express').Router();
-
+const mongoose = require('mongoose');
 const MoneyRoutine = require('../models/MoneyRoutine');
 const Transaction = require('../models/Transaction');
 const Category = require('../models/Category');
@@ -117,6 +117,12 @@ router.post('/', async (req, res) => {
         message: 'Amount cannot be negative',
       });
     }
+
+    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+  return res.status(400).json({
+    message: 'Invalid category ID',
+  });
+}
 
     const category = await Category.findOne({
       _id: categoryId,

@@ -115,7 +115,17 @@ router.get('/categories', async (req, res) => {
 router.post('/categories', async (req, res) => {
   try {
     const { name, type, icon, color } = req.body;
-    if (!name?.trim() || !type) return res.status(400).json({ message: 'Name and type are required' });
+if (!name?.trim() || !type) {
+  return res.status(400).json({
+    message: 'Name and type are required',
+  });
+}
+
+if (!['income', 'expense'].includes(type)) {
+  return res.status(400).json({
+    message: 'type must be either income or expense',
+  });
+}
     const cat = await Category.create({ name: name.trim(), type, icon, color, userId: null, isDefault: true });
     res.status(201).json({ data: formatCat(cat) });
   } catch (err) {
@@ -172,14 +182,34 @@ router.get('/announcements', async (req, res) => {
 router.post('/announcements', async (req, res) => {
   try {
     const { title, body, audience, publishNow } = req.body;
-    if (!title?.trim() || !body?.trim() || !audience) return res.status(400).json({ message: 'title, body and audience are required' });
-    const ann = await Announcement.create({ title, body, audience, publishedAt: publishNow ? new Date() : null, createdBy: req.user._id });
+
+    if (!title?.trim() || !body?.trim() || !audience) {
+      return res.status(400).json({
+        message: 'title, body and audience are required',
+      });
+    }
+
+    if (!['all', 'students', 'admins'].includes(audience)) {
+      return res.status(400).json({
+        message: 'audience must be all, students, or admins',
+      });
+    }
+
+    const ann = await Announcement.create({
+      title,
+      body,
+      audience,
+      publishedAt: publishNow ? new Date() : null,
+      createdBy: req.user._id,
+    });
+
     res.status(201).json({ data: formatAnn(ann) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 // PATCH /api/v1/admin/announcements/:id
 router.patch('/announcements/:id', async (req, res) => {

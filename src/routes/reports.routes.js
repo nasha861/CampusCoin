@@ -1,5 +1,5 @@
 const router = require('express').Router();
-
+const mongoose = require('mongoose');
 const Transaction = require('../models/Transaction');
 const Category = require('../models/Category');
 const { protect } = require('../middleware/auth');
@@ -174,6 +174,41 @@ router.get('/monthly', async (req, res) => {
     const month =
       req.query.month ||
       new Date().toISOString().slice(0, 7);
+
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({
+        message: 'Month must be in YYYY-MM format',
+      });
+    }
+
+    const monthNumber = Number(month.slice(5, 7));
+
+    if (monthNumber < 1 || monthNumber > 12) {
+      return res.status(400).json({
+        message: 'Month must be between 01 and 12',
+      });
+    }
+
+    if (
+      req.query.categoryId &&
+      !mongoose.Types.ObjectId.isValid(req.query.categoryId)
+    ) {
+      return res.status(400).json({
+        message: 'Invalid category ID',
+      });
+    }
+
+    if (req.query.startDate && Number.isNaN(Date.parse(req.query.startDate))) {
+  return res.status(400).json({
+    message: 'Invalid start date',
+  });
+}
+
+if (req.query.endDate && Number.isNaN(Date.parse(req.query.endDate))) {
+  return res.status(400).json({
+    message: 'Invalid end date',
+  });
+}
 
     const { start, end } = getMonthRange(month);
 
